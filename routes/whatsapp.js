@@ -45,6 +45,15 @@ router.post('/', async (req, res) => {
     const history = existing?.messages || [];
     history.push({ role: 'user', content: incomingText });
 
+    // If a team member has paused the AI for this lead, just log the message
+    // and don't auto-reply - let a human handle it from the dashboard.
+    if (existing?.ai_paused) {
+      await db.saveConversation(from, agentType, history, {
+        lead_status: existing?.lead_status || 'new',
+      });
+      return;
+    }
+
     // Get Claude's reply
     const { text, bookMeetingRequest } = await claude.getAgentReply(agentType, history);
     history.push({ role: 'assistant', content: text });
