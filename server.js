@@ -10,6 +10,7 @@ app.use(express.json());
 const metaLeadsRoute = require('./routes/metaLeads');
 const whatsappRoute = require('./routes/whatsapp');
 const razorpayRoute = require('./routes/razorpay');
+const dashboardRoute = require('./routes/dashboard');
 const { startCrossSellScheduler } = require('./lib/scheduler');
 
 // Meta Lead Ads sends new FMDL leads here
@@ -21,6 +22,11 @@ app.use('/webhook/whatsapp', whatsappRoute);
 
 // Razorpay sends "payment successful" events here (for digital products)
 app.use('/webhook/razorpay', razorpayRoute);
+
+// Team-facing dashboard to read conversations and pause/resume the AI per lead.
+// Needs urlencoded parsing for the pause/resume button's form submission.
+app.use(express.urlencoded({ extended: true }));
+app.use('/dashboard', dashboardRoute);
 
 app.get('/', (req, res) => res.send('Lead agent server is running.'));
 
