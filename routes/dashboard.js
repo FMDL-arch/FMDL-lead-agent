@@ -261,3 +261,5 @@ router.post('/rules/:category', async (req, res) => {
   await db.upsertCategoryRule(req.params.category, req.body.instructions || '');
   res.redirect('/dashboard/rules');
 });
+
+module.exports = router;
