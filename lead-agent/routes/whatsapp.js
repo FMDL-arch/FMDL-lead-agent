@@ -45,12 +45,11 @@ router.post('/', async (req, res) => {
     const history = existing?.messages || [];
     history.push({ role: 'user', content: incomingText });
 
-    // If a team member has paused the AI for this conversation, just log the
-    // incoming message on the dashboard and don't auto-reply - a human is handling it.
+    // If a team member has paused the AI for this lead, just log the message
+    // and don't auto-reply - let a human handle it from the dashboard.
     if (existing?.ai_paused) {
       await db.saveConversation(from, agentType, history, {
         lead_status: existing?.lead_status || 'new',
-        ai_paused: true,
       });
       return;
     }
