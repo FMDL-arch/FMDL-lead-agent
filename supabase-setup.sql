@@ -2,17 +2,9 @@
 
 create table conversations (
   phone text primary key,
-  agent_type text, -- 'fmdl' or 'products'
+  agent_type text default 'fmdl',
   messages jsonb default '[]',
-  lead_status text, -- 'new', 'hot', 'cold', 'meeting_booked' (fmdl only)
+  lead_status text, -- 'new', 'hot', 'cold', 'meeting_offered', 'meeting_booked'
+  ai_paused boolean default false,
   updated_at timestamptz default now()
-);
-
-create table purchases (
-  id bigint generated always as identity primary key,
-  phone text not null,
-  product_key text not null,
-  purchased_at timestamptz default now(),
-  last_followup_at timestamptz,
-  followup_count int default 0
 );
