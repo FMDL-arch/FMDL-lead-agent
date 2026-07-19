@@ -5,7 +5,6 @@ const whatsapp = require('../lib/whatsapp');
 const claude = require('../lib/claude');
 const calcom = require('../lib/calcom');
 const db = require('../lib/db');
-const config = require('../config');
 
 const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN;
 
@@ -33,12 +32,7 @@ router.post('/', async (req, res) => {
     const incomingText = message.text?.body;
     if (!incomingText) return;
 
-    const phoneNumberId = value.metadata.phone_number_id;
-
-    // Tell the two numbers apart
-    const agentType =
-      phoneNumberId === config.numbers.FMDL_PHONE_NUMBER_ID ? 'fmdl' : 'products';
-    const sendingNumberId = phoneNumberId; // reply from the SAME number the message came to
+    const sendingNumberId = value.metadata.phone_number_id; // reply from the SAME number the message came to
 
     // Load conversation history
     const existing = await db.getConversation(from);
@@ -48,21 +42,21 @@ router.post('/', async (req, res) => {
     // If a team member has paused the AI for this lead, just log the message
     // and don't auto-reply - let a human handle it from the dashboard.
     if (existing?.ai_paused) {
-      await db.saveConversation(from, agentType, history, {
+      await db.saveConversation(from, 'fmdl', history, {
         lead_status: existing?.lead_status || 'new',
       });
       return;
     }
 
     // Get Claude's reply
-    const { text, bookMeetingRequest } = await claude.getAgentReply(agentType, history);
+    const { text, bookMeetingRequest } = await claude.getAgentReply(history);
     history.push({ role: 'assistant', content: text });
 
     await whatsapp.sendText(sendingNumberId, from, text);
 
     let leadStatus = existing?.lead_status || 'new';
 
-    if (agentType === 'fmdl' && bookMeetingRequest) {
+    if (bookMeetingRequest) {
       const link = await calcom.getBookingLink();
       await whatsapp.sendText(
         sendingNumberId,
@@ -72,7 +66,7 @@ router.post('/', async (req, res) => {
       leadStatus = 'meeting_offered';
     }
 
-    await db.saveConversation(from, agentType, history, { lead_status: leadStatus });
+    await db.saveConversation(from, 'fmdl', history, { lead_status: leadStatus });
   } catch (err) {
     console.error('WhatsApp webhook error:', err.response?.data || err.message);
   }
