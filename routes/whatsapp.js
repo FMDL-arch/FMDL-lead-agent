@@ -9,6 +9,20 @@ const categories = require('../lib/categories');
 
 const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN;
 
+// Maps each of the 8 project categories to the portfolio PDF slug that best
+// represents it, so Shipra can automatically send the right profile PDF once
+// a lead's project type is known. Slugs match the rows in portfolio_pdfs.
+const categoryToPdfSlug = {
+  architecture_residence: 'residential',
+  interior_residence: 'residential',
+  architecture_hospital: 'healthcare',
+  interior_hospital: 'healthcare',
+  architecture_temple_public: 'public_building',
+  interior_office: 'commercial',
+  interior_spa: 'commercial',
+  other: 'corporate',
+};
+
 router.get('/', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -25,6 +39,20 @@ async function sendAsMessages(phoneNumberId, to, text) {
   const parts = text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
   for (const part of parts.length ? parts : [text]) {
     await whatsapp.sendText(phoneNumberId, to, part);
+  }
+}
+
+// Sends the portfolio PDF that matches a newly-selected project category, if
+// the team has uploaded one for it from the dashboard.
+async function sendCategoryPdf(phoneNumberId, to, category) {
+  const slug = categoryToPdfSlug[category];
+  if (!slug) return;
+  const pdf = await db.getPortfolioPdf(slug);
+  if (!pdf?.file_url) return;
+  try {
+    await whatsapp.sendDocument(phoneNumberId, to, pdf.file_url, pdf.filename || `${pdf.label}.pdf`, pdf.label);
+  } catch (err) {
+    console.error('sendCategoryPdf error:', err.response?.data || err.message);
   }
 }
 
@@ -98,6 +126,11 @@ router.post('/', async (req, res) => {
 
     if (askCategory) {
       await whatsapp.sendCategoryList(sendingNumberId, from);
+    }
+
+    // A category was just picked this turn - send the matching portfolio PDF.
+    if (selectedCategory) {
+      await sendCategoryPdf(sendingNumberId, from, selectedCategory);
     }
 
     let leadStatus = existing?.lead_status || 'new';
