@@ -44,12 +44,23 @@ router.post('/', async (req, res) => {
     if (existing?.ai_paused) {
       await db.saveConversation(from, 'fmdl', history, {
         lead_status: existing?.lead_status || 'new',
+        project_category: existing?.project_category || null,
       });
       return;
     }
 
+    // If we already know this lead's project category, pull any team-defined
+    // reply guidance for it and pass it to Claude as extra context.
+    let extraContext = '';
+    if (existing?.project_category) {
+      const rule = await db.getCategoryRule(existing.project_category);
+      if (rule?.instructions) {
+        extraContext = `Category guidance for ${rule.label}: ${rule.instructions}`;
+      }
+    }
+
     // Get Claude's reply
-    const { text, bookMeetingRequest } = await claude.getAgentReply(history);
+    const { text, bookMeetingRequest, projectCategory } = await claude.getAgentReply(history, extraContext);
     history.push({ role: 'assistant', content: text });
 
     await whatsapp.sendText(sendingNumberId, from, text);
@@ -66,7 +77,10 @@ router.post('/', async (req, res) => {
       leadStatus = 'meeting_offered';
     }
 
-    await db.saveConversation(from, 'fmdl', history, { lead_status: leadStatus });
+    await db.saveConversation(from, 'fmdl', history, {
+      lead_status: leadStatus,
+      project_category: projectCategory || existing?.project_category || null,
+    });
   } catch (err) {
     console.error('WhatsApp webhook error:', err.response?.data || err.message);
   }
