@@ -12,6 +12,8 @@ const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN;
 // Maps each of the 8 project categories to the portfolio PDF slug that best
 // represents it, so Shipra can automatically send the right profile PDF once
 // a lead's project type is known. Slugs match the rows in portfolio_pdfs.
+// NOTE: 'other' ("Not listed above") is deliberately NOT in this map - it gets
+// FMDL's Instagram/website links instead of a PDF, handled separately below.
 const categoryToPdfSlug = {
   architecture_residence: 'residential',
   interior_residence: 'residential',
@@ -20,7 +22,6 @@ const categoryToPdfSlug = {
   architecture_temple_public: 'public_building',
   interior_office: 'commercial',
   interior_spa: 'commercial',
-  other: 'corporate',
 };
 
 router.get('/', (req, res) => {
@@ -43,8 +44,21 @@ async function sendAsMessages(phoneNumberId, to, text) {
 }
 
 // Sends the portfolio PDF that matches a newly-selected project category, if
-// the team has uploaded one for it from the dashboard.
-async function sendCategoryPdf(phoneNumberId, to, category) {
+// the team has uploaded one for it from the dashboard. For "Not listed above"
+// (category 'other') there's no matching PDF - send FMDL's Instagram/website
+// links instead so the lead has something useful to look at.
+async function sendCategoryFollowUp(phoneNumberId, to, category) {
+  if (category === 'other') {
+    const links = [
+      process.env.FMDL_WEBSITE_URL && `Website: ${process.env.FMDL_WEBSITE_URL}`,
+      process.env.FMDL_INSTAGRAM_URL && `FMDL Instagram: ${process.env.FMDL_INSTAGRAM_URL}`,
+      process.env.FMDL_FOUNDERS_INSTAGRAM_URL && `Akshaay & Amrita's Instagram: ${process.env.FMDL_FOUNDERS_INSTAGRAM_URL}`,
+    ].filter(Boolean);
+    if (links.length) {
+      await whatsapp.sendText(phoneNumberId, to, `Here's a bit more about us in the meantime:\n${links.join('\n')}`);
+    }
+    return;
+  }
   const slug = categoryToPdfSlug[category];
   if (!slug) return;
   const pdf = await db.getPortfolioPdf(slug);
@@ -52,7 +66,7 @@ async function sendCategoryPdf(phoneNumberId, to, category) {
   try {
     await whatsapp.sendDocument(phoneNumberId, to, pdf.file_url, pdf.filename || `${pdf.label}.pdf`, pdf.label);
   } catch (err) {
-    console.error('sendCategoryPdf error:', err.response?.data || err.message);
+    console.error('sendCategoryFollowUp error:', err.response?.data || err.message);
   }
 }
 
@@ -117,7 +131,8 @@ router.post('/', async (req, res) => {
     }
 
     // Get the reply
-    const { text, bookMeetingRequest, projectCategory, askCategory, leadName } = await claude.getAgentReply(history, extraContext);
+    const { text, bookMeetingRequest, projectCategory, askCategory, leadName, leadLocation, jobFormSent, jobFormConfirmed } =
+      await claude.getAgentReply(history, extraContext);
     history.push({ role: 'assistant', content: text });
 
     if (text) {
@@ -128,9 +143,10 @@ router.post('/', async (req, res) => {
       await whatsapp.sendCategoryList(sendingNumberId, from);
     }
 
-    // A category was just picked this turn - send the matching portfolio PDF.
+    // A category was just picked this turn - send the matching follow-up
+    // (portfolio PDF, or links for "Not listed above").
     if (selectedCategory) {
-      await sendCategoryPdf(sendingNumberId, from, selectedCategory);
+      await sendCategoryFollowUp(sendingNumberId, from, selectedCategory);
     }
 
     let leadStatus = existing?.lead_status || 'new';
@@ -145,10 +161,24 @@ router.post('/', async (req, res) => {
       leadStatus = 'meeting_offered';
     }
 
+    // Job-seeker tracking: only stamp job_form_sent_at the FIRST time the link
+    // goes out, so the 2h/12h reminder timers don't keep resetting on every
+    // later message in the same conversation.
+    const jobSeekerFields = {};
+    if (jobFormSent && !existing?.job_form_sent_at) {
+      jobSeekerFields.lead_type = 'job_seeker';
+      jobSeekerFields.job_form_sent_at = new Date().toISOString();
+    }
+    if (jobFormConfirmed) {
+      jobSeekerFields.job_form_confirmed = true;
+    }
+
     await db.saveConversation(from, 'fmdl', history, {
       lead_status: leadStatus,
       project_category: selectedCategory || projectCategory || existing?.project_category || null,
       name: leadName || existing?.name || null,
+      location: leadLocation || existing?.location || null,
+      ...jobSeekerFields,
     });
   } catch (err) {
     console.error('WhatsApp webhook error:', err.response?.data || err.message);
