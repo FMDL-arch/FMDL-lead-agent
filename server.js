@@ -10,6 +10,7 @@ app.use(express.json());
 const metaLeadsRoute = require('./routes/metaLeads');
 const whatsappRoute = require('./routes/whatsapp');
 const dashboardRoute = require('./routes/dashboard');
+const { startJobReminderScheduler } = require('./lib/jobReminders');
 
 // Meta Lead Ads sends new FMDL leads here
 app.use('/webhook/meta-leads', metaLeadsRoute);
@@ -27,4 +28,7 @@ app.get('/', (req, res) => res.send('Lead agent server is running.'));
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  // Background job: nudges job-seeker leads at 2h/12h if they haven't confirmed
+  // filling out the application form yet.
+  startJobReminderScheduler();
 });
