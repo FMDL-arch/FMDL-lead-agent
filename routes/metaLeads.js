@@ -60,7 +60,7 @@ router.post('/', async (req, res) => {
         // so the opener leads with that instead of jumping straight into project questions.
         const opener = formName
           ? `Hi ${formName}! Thanks for reaching out to FMDL Architects - I'm Shipra from the team. Which city are you based in?`
-          : `Hi! Thanks for reaching out to FMDL Architects - I'm Shipra from the team. Who am I chatting with?`;
+          : `Hi! Thanks for reaching out to FMDL Architects - I'm Shipra from the team. What's your name?`;
 
         await whatsapp.sendText(config.numbers.FMDL_PHONE_NUMBER_ID, cleanPhone, opener);
         await db.saveConversation(cleanPhone, 'fmdl', [
