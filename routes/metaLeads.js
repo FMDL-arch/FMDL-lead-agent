@@ -48,21 +48,27 @@ router.post('/', async (req, res) => {
 
         const fieldData = lead.field_data || [];
         const phone = fieldData.find((f) => f.name.includes('phone'))?.values?.[0];
-        const name = fieldData.find((f) => f.name.includes('name'))?.values?.[0] || 'there';
+        // Meta lead forms often include a name field already - if we have it, greet them by
+        // name and skip asking again; Shipra's prompt only asks for what's still missing.
+        const formName = fieldData.find((f) => f.name.includes('name'))?.values?.[0];
 
         if (!phone) continue;
         const cleanPhone = phone.replace(/[^\d]/g, '');
 
-        // Kick off the conversation on the FMDL WhatsApp number
-        const opener = `Hi ${name}! Thanks for your interest in FMDL Architects. Could you tell me a bit about your project - is it residential, hospital, wellness, temple, or something else?`;
+        // Kick off the conversation on the FMDL WhatsApp number. Per the team's request,
+        // Shipra should always get the lead's name and location before anything else -
+        // so the opener leads with that instead of jumping straight into project questions.
+        const opener = formName
+          ? `Hi ${formName}! Thanks for reaching out to FMDL Architects - I'm Shipra from the team. Which city are you based in?`
+          : `Hi! Thanks for reaching out to FMDL Architects - I'm Shipra from the team. Who am I chatting with?`;
 
         await whatsapp.sendText(config.numbers.FMDL_PHONE_NUMBER_ID, cleanPhone, opener);
         await db.saveConversation(cleanPhone, 'fmdl', [
           { role: 'assistant', content: opener },
-        ], { lead_status: 'new', name: name !== 'there' ? name : null });
+        ], { lead_status: 'new', name: formName || null });
 
         // Notify the founders/sales team so they know a new lead just came in.
-        const notifyText = `New lead! ${name} (${cleanPhone}) just submitted the FMDL Instant Form. Shipra has started the WhatsApp conversation.`;
+        const notifyText = `New lead! ${formName || 'Unknown name'} (${cleanPhone}) just submitted the FMDL Instant Form. Shipra has started the WhatsApp conversation.`;
         for (const teamNumber of TEAM_NOTIFY_NUMBERS) {
           try {
             await whatsapp.sendText(config.numbers.FMDL_PHONE_NUMBER_ID, teamNumber, notifyText);
