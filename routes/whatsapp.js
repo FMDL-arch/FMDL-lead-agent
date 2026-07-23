@@ -117,7 +117,7 @@ router.post('/', async (req, res) => {
     }
 
     // Get the reply
-    const { text, bookMeetingRequest, projectCategory, askCategory } = await claude.getAgentReply(history, extraContext);
+    const { text, bookMeetingRequest, projectCategory, askCategory, leadName } = await claude.getAgentReply(history, extraContext);
     history.push({ role: 'assistant', content: text });
 
     if (text) {
@@ -148,6 +148,7 @@ router.post('/', async (req, res) => {
     await db.saveConversation(from, 'fmdl', history, {
       lead_status: leadStatus,
       project_category: selectedCategory || projectCategory || existing?.project_category || null,
+      name: leadName || existing?.name || null,
     });
   } catch (err) {
     console.error('WhatsApp webhook error:', err.response?.data || err.message);
